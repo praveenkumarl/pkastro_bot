@@ -56,7 +56,8 @@ async function getCompanyData() {
 
 // Append company signature to bot responses
 function appendSignature(text) {
-  const signature = "\n\nThanks/Regards\nPERIYANAYAKI ASTRO SOLUTIONS";
+  const botName = process.env.BOT_NAME || "PK Astro Bot";
+  const signature = `\n\nThanks/Regards\n${botName} (on behalf of PERIYANAYAKI ASTRO SOLUTIONS)`;
   // If text already ends with the signature, don't append again
   if (typeof text === "string" && text.trim().endsWith(signature.trim())) {
     return text;
