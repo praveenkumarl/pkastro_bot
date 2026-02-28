@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SERVICE=picobot
+
+usage() {
+  echo "Usage: $0 [restart|status|logs]"
+  exit 1
+}
+
+cmd=${1:-restart}
+
+case "$cmd" in
+  restart)
+    if [ "$EUID" -ne 0 ]; then
+      sudo systemctl restart "$SERVICE"
+    else
+      systemctl restart "$SERVICE"
+    fi
+    sleep 1
+    systemctl status "$SERVICE" --no-pager -l
+    ;;
+  status)
+    systemctl status "$SERVICE" --no-pager -l
+    ;;
+  logs)
+    journalctl -u "$SERVICE" --no-pager -n 200
+    ;;
+  *)
+    usage
+    ;;
+esac
