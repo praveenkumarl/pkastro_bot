@@ -1,0 +1,3 @@
+# Ensure shell scripts and scripts folder use LF on checkout
+*.sh text eol=lf
+scripts/* text eol=lf
