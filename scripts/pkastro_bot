@@ -15,7 +15,7 @@ case "$cmd" in
     if [ "$EUID" -ne 0 ]; then
       sudo systemctl restart "$SERVICE"
     else
-      systemctl restart "$SERVICE"
+      systemctl.restart "$SERVICE"
     fi
     sleep 1
     systemctl status "$SERVICE" --no-pager -l
