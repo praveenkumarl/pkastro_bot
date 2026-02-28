@@ -1,16 +1,39 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SERVICE=picobot
+DEFAULT_SERVICE=picobot
 
 usage() {
-  echo "Usage: $0 [restart|status|logs]"
+  echo "Usage: $0 [<service>] [restart|status|logs]"
+  echo "If only one arg is provided and it is one of restart|status|logs,"
+  echo "it will operate on the default service ($DEFAULT_SERVICE)."
+  echo "Examples:" 
+  echo "  $0 restart            # restarts default service ($DEFAULT_SERVICE)"
+  echo "  $0 picobot restart    # restarts 'picobot' service"
   exit 1
 }
 
-cmd=${1:-restart}
+# Parse args: allow either (cmd) or (service cmd)
+if [ "$#" -eq 0 ]; then
+  SERVICE="$DEFAULT_SERVICE"
+  CMD=restart
+elif [ "$#" -eq 1 ]; then
+  case "$1" in
+    restart|status|logs)
+      SERVICE="$DEFAULT_SERVICE"
+      CMD="$1"
+      ;;
+    *)
+      SERVICE="$1"
+      CMD=restart
+      ;;
+  esac
+else
+  SERVICE="$1"
+  CMD="$2"
+fi
 
-case "$cmd" in
+case "$CMD" in
   restart)
     if [ "$EUID" -ne 0 ]; then
       sudo systemctl restart "$SERVICE"
