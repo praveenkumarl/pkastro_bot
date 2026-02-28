@@ -54,6 +54,16 @@ async function getCompanyData() {
   }
 }
 
+// Append company signature to bot responses
+function appendSignature(text) {
+  const signature = "\n\nThanks/Regards\nPERIYANAYAKI ASTRO SOLUTIONS";
+  // If text already ends with the signature, don't append again
+  if (typeof text === "string" && text.trim().endsWith(signature.trim())) {
+    return text;
+  }
+  return (text || "") + signature;
+}
+
 /* ===========================
    EXPRESS API
 =========================== */
@@ -69,7 +79,7 @@ app.post("/chat", async (req, res) => {
       messages: [
         {
           role: "system",
-          content: `You are a helpful astrology assistant.
+          content: `You are the helpful astrology assistant.
 If user asks about company details, answer ONLY using below company data.
 
 Company Data:
@@ -80,7 +90,7 @@ ${sheetData}`
     });
 
     res.json({
-      reply: response.choices[0].message.content,
+      reply: appendSignature(response.choices[0].message.content),
     });
 
   } catch (error) {
@@ -113,7 +123,7 @@ bot.on("message", async (msg) => {
       messages: [
         {
           role: "system",
-          content: `You are a helpful astrology assistant.
+          content: `You are the administrative assistant for PERIYANAYAKI ASTRO SOLUTIONS. You are a helpful astrology assistant as well.
 If user asks about company details, answer ONLY using below company data.
 
 Company Data:
@@ -123,7 +133,7 @@ ${sheetData}`
       ],
     });
 
-    const reply = response.choices[0].message.content;
+    const reply = appendSignature(response.choices[0].message.content);
 
     await bot.sendMessage(chatId, reply);
 
