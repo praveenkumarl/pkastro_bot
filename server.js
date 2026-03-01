@@ -36,21 +36,29 @@ async function getCompanyData() {
   }
 
   try {
-    const response = await fetch(process.env.GOOGLE_SHEET_CSV_URL);
-    const csvText = await response.text();
+    // Support multiple CSV URLs (tabs) in env var GOOGLE_SHEET_CSV_URLS (comma-separated)
+    const raw = process.env.GOOGLE_SHEET_CSV_URLS || process.env.GOOGLE_SHEET_CSV_URL || "";
+    const urls = raw.split(',').map(s => s.trim()).filter(Boolean);
+    if (urls.length === 0) {
+      throw new Error('No Google Sheet CSV URL(s) configured in GOOGLE_SHEET_CSV_URLS/GOOGLE_SHEET_CSV_URL');
+    }
 
-    // Convert CSV to readable text
-    const rows = csvText.split("\n").map(row => row.replace(/,/g, " | "));
-    companyContext = rows.join("\n");
+    const parts = await Promise.all(urls.map(async (u, idx) => {
+      const r = await fetch(u);
+      const txt = await r.text();
+      const rows = txt.split('\n').map(row => row.replace(/,/g, ' | ')).join('\n');
+      // Add a clear header for each sheet/tab
+      return `--- Sheet ${idx + 1} ---\n${rows}`;
+    }));
 
+    companyContext = parts.join('\n\n');
     lastFetchTime = now;
-
-    console.log("✅ Google Sheet data refreshed");
+    console.log('✅ Google Sheet data refreshed (merged', urls.length, 'sheets)');
     return companyContext;
 
   } catch (error) {
-    console.error("Google Sheet Fetch Error:", error);
-    return "Company data unavailable.";
+    console.error('Google Sheet Fetch Error:', error);
+    return 'Company data unavailable.';
   }
 }
 
@@ -63,6 +71,28 @@ function appendSignature(text) {
     return text;
   }
   return (text || "") + signature;
+}
+
+// Convert simple Markdown emphasis to HTML for Telegram HTML parse_mode.
+function mdToHtml(text) {
+  if (!text) return "";
+  // Escape HTML
+  let out = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+  // Code blocks ```lang
+  out = out.replace(/```([\s\S]*?)```/g, (m, p1) => `<pre><code>${p1.replace(/&/g,'&amp;')}</code></pre>`);
+  // Inline code `code`
+  out = out.replace(/`([^`]+)`/g, '<code>$1</code>');
+
+  // Bold **text** or __text__
+  out = out.replace(/\*\*([\s\S]+?)\*\*/g, '<b>$1</b>');
+  out = out.replace(/__([\s\S]+?)__/g, '<b>$1</b>');
+
+  // Italic *text* or _text_
+  out = out.replace(/\*([^\*\s][\s\S]*?)\*/g, '<i>$1</i>');
+  out = out.replace(/_([^_\s][\s\S]*?)_/g, '<i>$1</i>');
+
+  return out;
 }
 
 /* ===========================
@@ -81,18 +111,27 @@ app.post("/chat", async (req, res) => {
         {
           role: "system",
           content: `You are the helpful astrology assistant.
-If user asks about company details, answer ONLY using below company data.
+If user asks about company or training details, answer ONLY using the data below.  
+When relevant, prefer the Training Data for training-related questions and Company Data for company-related questions.
 
-Company Data:
+Data:
 ${sheetData}`
         },
         { role: "user", content: message }
       ],
     });
 
-    res.json({
-      reply: appendSignature(response.choices[0].message.content),
-    });
+    const replyText = appendSignature(response.choices[0].message.content);
+    const replyHtml = mdToHtml(replyText);
+
+    // If client asked for HTML (either via body.html=true or ?format=html), return HTML in `reply`.
+    const wantsHtml = req.body && req.body.html === true || (req.query && req.query.format === 'html');
+
+    if (wantsHtml) {
+      res.json({ reply: replyHtml, reply_html: replyHtml, reply_text: replyText, is_html: true });
+    } else {
+      res.json({ reply: replyText, reply_html: replyHtml, is_html: false });
+    }
 
   } catch (error) {
     console.error(error);
@@ -125,9 +164,10 @@ bot.on("message", async (msg) => {
         {
           role: "system",
           content: `You are the administrative assistant for PERIYANAYAKI ASTRO SOLUTIONS. You are a helpful astrology assistant as well.
-If user asks about company details, answer ONLY using below company data.
+If user asks about company or training details, answer ONLY using the data below.  
+When relevant, prefer the Training Data for training-related questions and Company Data for company-related questions.
 
-Company Data:
+Data:
 ${sheetData}`
         },
         { role: "user", content: userMessage }
@@ -135,8 +175,9 @@ ${sheetData}`
     });
 
     const reply = appendSignature(response.choices[0].message.content);
+    const replyHtml = mdToHtml(reply);
 
-    await bot.sendMessage(chatId, reply);
+    await bot.sendMessage(chatId, replyHtml, { parse_mode: 'HTML', disable_web_page_preview: true });
 
   } catch (error) {
     console.error("Telegram Error:", error);
