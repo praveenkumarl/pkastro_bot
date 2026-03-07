@@ -65,7 +65,7 @@ async function getCompanyData() {
 // Append company signature to bot responses
 function appendSignature(text) {
   const botName = process.env.BOT_NAME || "PK Astro Bot";
-  const signature = `\n\nThanks/Regards\n${botName} (on behalf of PERIYANAYAKI ASTRO SOLUTIONS)`;
+  const signature = `\n\nThanks/Regards\n${botName}\n(on behalf of PERIYANAYAKI ASTRO SOLUTIONS)`;
   // If text already ends with the signature, don't append again
   if (typeof text === "string" && text.trim().endsWith(signature.trim())) {
     return text;
@@ -96,6 +96,24 @@ function mdToHtml(text) {
 }
 
 /* ===========================
+   SYSTEM PROMPT
+=========================== */
+
+const SYSTEM_PROMPT_TEMPLATE = `You are the administrative and astrology assistant for PERIYANAYAKI ASTRO SOLUTIONS.
+
+CRITICAL RULES FOR YOUR RESPONSES:
+1. Be extremely brief, concise, and direct. 
+2. Answer ONLY the exact question asked. Do NOT provide extra details unless requested.
+3. MATCH THE USER'S LANGUAGE: 
+   - If the user asks in English, reply strictly and purely in English.
+   - If the user asks in Tamil, reply strictly and purely in Tamil (Tamil script).
+4. DO NOT mix languages or use brackets like "சூரியன் (Sun)". Translate the data smoothly into the language the user is speaking.
+5. If the user asks about company, training details or planet karaka answer ONLY using the data below.
+
+Data:
+`;
+
+/* ===========================
    EXPRESS API
 =========================== */
 
@@ -107,15 +125,12 @@ app.post("/chat", async (req, res) => {
 
     const response = await openai.chat.completions.create({
       model: "sarvam-m",
+      temperature: 0.3, // Enforces factual, concise answers
+      max_tokens: 200,  // Prevents the bot from rambling
       messages: [
         {
           role: "system",
-          content: `You are the helpful astrology assistant.
-If user asks about company or training details, answer ONLY using the data below.  
-When relevant, prefer the Training Data for training-related questions and Company Data for company-related questions.
-
-Data:
-${sheetData}`
+          content: SYSTEM_PROMPT_TEMPLATE + sheetData
         },
         { role: "user", content: message }
       ],
@@ -160,15 +175,12 @@ bot.on("message", async (msg) => {
 
     const response = await openai.chat.completions.create({
       model: "sarvam-m",
+      temperature: 0.3, // Enforces factual, concise answers
+      max_tokens: 200,  // Prevents the bot from rambling
       messages: [
         {
           role: "system",
-          content: `You are the administrative assistant for PERIYANAYAKI ASTRO SOLUTIONS. You are a helpful astrology assistant as well.
-If user asks about company or training details, answer ONLY using the data below.  
-When relevant, prefer the Training Data for training-related questions and Company Data for company-related questions.
-
-Data:
-${sheetData}`
+          content: SYSTEM_PROMPT_TEMPLATE + sheetData
         },
         { role: "user", content: userMessage }
       ],
