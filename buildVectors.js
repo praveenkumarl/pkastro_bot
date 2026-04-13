@@ -1,76 +1,125 @@
 import axios from "axios";
 import fs from "fs";
+import path from "path";
 import csv from "csv-parser";
 import dotenv from "dotenv";
 import { Readable } from "stream";
 
 dotenv.config();
 
-async function createEmbedding(text) {
-  const response = await axios.post("http://localhost:11434/api/embeddings", {
-    model: "nomic-embed-text",
-    prompt: text
-  });
+const OLLAMA_URL = "http://127.0.0.1:11434/api/embeddings";
+const MODEL = "nomic-embed-text";
+const DOCS_DIR = "./docs"; // Local text files
+const CONCURRENT_REQUESTS = 3;
 
-  return response.data.embedding;
+// --- 1. LOCAL DOCS PROCESSING ---
+function createLocalChunks(content, fileName, folderCategory) {
+    // Split by double newline to separate the context-rich blocks
+    return content.split(/\n\s*\n/).map(para => {
+        const text = para.trim();
+        
+        // Regex to extract [Category: ... | Keywords: ...]
+        const metaRegex = /^\[Category:\s*(.*?)\s*\|\s*Keywords:\s*(.*?)\s*\]/;
+        const match = text.match(metaRegex);
+
+        if (match) {
+            // If explicit metadata is found in the text, extract it
+            return {
+                type: "local_doc",
+                category: match[1].trim(), // Extracted category (e.g., 'வாஸ்து (Vastu)')
+                keywords: match[2].trim(), // Extracted keywords
+                source: fileName,
+                text: text // Keep full text including tags for better vector context
+            };
+        } else {
+            // Fallback to original logic: folder name as category, empty keywords
+            return {
+                type: "local_doc",
+                category: folderCategory.toLowerCase(),
+                keywords: "",
+                source: fileName,
+                text: text
+            };
+        }
+    }).filter(c => c.text.length > 20);
 }
 
-async function fetchCSV(url) {
-  const response = await axios.get(url);
-  return response.data;
+// --- 2. GOOGLE SHEETS PROCESSING ---
+function createCSVChunks(row, type) {
+    const text = Object.values(row).join(" ").trim();
+    // Added 'keywords' field for consistent JSON schema across all chunk types
+    return text ? [{ type: `sheet_${type}`, category: "general", keywords: "", text }] : [];
+}
+
+async function createEmbedding(text) {
+    try {
+        const res = await axios.post(OLLAMA_URL, { model: MODEL, prompt: text });
+        return res.data.embedding;
+    } catch (e) { return null; }
 }
 
 async function parseCSV(csvText) {
-  return new Promise((resolve, reject) => {
-    const rows = [];
-    const stream = Readable.from(csvText);
-
-    stream
-      .pipe(csv())
-      .on("data", (row) => rows.push(row))
-      .on("end", () => resolve(rows))
-      .on("error", reject);
-  });
+    return new Promise((resolve) => {
+        const rows = [];
+        Readable.from(csvText).pipe(csv()).on("data", r => rows.push(r)).on("end", () => resolve(rows));
+    });
 }
 
 async function build() {
-  const urls = [];
+    let allChunks = [];
 
-  if (process.env.GOOGLE_SHEET_CSV_URL)
-    urls.push(process.env.GOOGLE_SHEET_CSV_URL);
+    // STEP A: Fetch and Process Google Sheets
+    const urls = (process.env.GOOGLE_SHEET_CSV_URLS || "").split(",").filter(u => u.trim());
+    for (let url of urls) {
+        console.log("⬇ Fetching Sheet:", url);
+        try {
+            const res = await axios.get(url);
+            const rows = await parseCSV(res.data);
+            rows.forEach(row => allChunks.push(...createCSVChunks(row, "google")));
+        } catch (err) {
+            console.error("❌ Failed to fetch sheet:", err.message);
+        }
+    }
 
-  if (process.env.GOOGLE_SHEET_CSV_URLS) {
-    const extra = process.env.GOOGLE_SHEET_CSV_URLS.split(",");
-    urls.push(...extra);
-  }
+    // STEP B: Process Local Docs (UPDATED FOR SUBFOLDERS & INTERNAL METADATA)
+    if (fs.existsSync(DOCS_DIR)) {
+        const folders = fs.readdirSync(DOCS_DIR, { withFileTypes: true })
+            .filter(dirent => dirent.isDirectory())
+            .map(dirent => dirent.name);
 
-  console.log("Found", urls.length, "sheets");
+        for (const folder of folders) {
+            const folderPath = path.join(DOCS_DIR, folder);
+            const files = fs.readdirSync(folderPath).filter(f => f.endsWith(".txt"));
 
-  let allRows = [];
+            files.forEach(file => {
+                console.log(`📖 Reading Local [${folder}]: ${file}`);
+                const content = fs.readFileSync(path.join(folderPath, file), "utf-8");
+                // Pass folder name as the fallback category
+                allChunks.push(...createLocalChunks(content, file, folder));
+            });
+        }
+    } else {
+        console.log(`⚠️ Docs folder not found at ${DOCS_DIR}`);
+    }
 
-  for (let url of urls) {
-    console.log("Fetching:", url);
-    const csvText = await fetchCSV(url);
-    const rows = await parseCSV(csvText);
-    allRows.push(...rows);
-  }
+    // STEP C: Generate Embeddings
+    console.log(`🧠 Embedding ${allChunks.length} total chunks...`);
+    const vectors = [];
+    
+    for (let i = 0; i < allChunks.length; i += CONCURRENT_REQUESTS) {
+        const batch = allChunks.slice(i, i + CONCURRENT_REQUESTS);
+        console.log(`⚡ Embedding batch ${i + 1} to ${i + batch.length} of ${allChunks.length}`);
+        
+        const results = await Promise.all(batch.map(async (chunk, idx) => {
+            const embedding = await createEmbedding(chunk.text);
+            return embedding ? { id: `v_${i + idx}`, ...chunk, embedding } : null;
+        }));
+        
+        vectors.push(...results.filter(v => v !== null));
+    }
 
-  const vectors = [];
-
-  for (let row of allRows) {
-    const text = Object.values(row).join(" | ");
-    const embedding = await createEmbedding(text);
-
-    vectors.push({
-      text,
-      embedding
-    });
-
-    console.log("Embedded:", text);
-  }
-
-  fs.writeFileSync("vectors.json", JSON.stringify(vectors, null, 2));
-  console.log("✅ Vector file created with", vectors.length, "entries");
+    fs.writeFileSync("vectors.json", JSON.stringify(vectors, null, 2));
+    console.log("✅ Hybrid vectors.json created successfully with internal metadata and folder fallbacks!");
 }
 
 build();
