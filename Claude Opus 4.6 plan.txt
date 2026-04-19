@@ -1,0 +1,104 @@
+Here's the plan based on your full codebase analysis:
+
+PNK Astro Bot — Professional RAG Architecture Plan
+Current Problems
+CHUNK_SIZE=180 — way too small, fragments context mid-sentence
+No PDF ingestion — 8+ PDFs in docs/ are ignored
+No hybrid search — semantic-only misses exact terms (planet names, Tamil keywords)
+Two languages (Python ingestion + Node.js bot) — unnecessary complexity
+No re-ranking — top-8 chunks may include irrelevant noise
+In-memory chat history — lost on restart
+No structured data handling — numerology JSON chunked as raw text
+Architecture Plan (7 Steps)
+Step 1: Consolidate to Python — Rewrite pnkastro_bot.js as bot.py using FastAPI + python-telegram-bot. Single language = simpler deployment on 2CPU/4GB VPS.
+
+Step 2: Fix chunking pipeline in update_chromadb.py:
+
+CHUNK_SIZE → 512, CHUNK_OVERLAP → 64
+Add PDF loader (PyMuPDF / pymupdf4llm) for the 8+ Tamil/English PDFs
+Add JSON loader for numerology_*.json — convert each entry to a natural-language sentence before chunking
+Switch embedding model to nomic-embed-text:latest (768-dim, faster, better for retrieval than paraphrase-multilingual)
+Use paraphrase-multilingual:latest only for query embedding (cross-lingual Tamil↔English)
+Step 3: Hybrid retrieval — Add BM25 keyword search alongside vector search:
+
+Store BM25 index using rank_bm25 (pure Python, no extra server)
+At query time: get top-10 from vector + top-10 from BM25 → merge with Reciprocal Rank Fusion (RRF)
+This fixes exact-match failures for planet names, Tamil terms, numbers
+Step 4: Re-ranking — After RRF merge, use paraphrase-multilingual to compute cosine similarity between query and each candidate chunk. Keep top-5. This is cheap (just embedding comparisons).
+
+Step 5: Structured query routing — Detect query intent before retrieval:
+
+Numerology query (contains digits) → filter source_type=numerology + do exact JSON lookup
+Company/pricing query → filter source_type=company_detail
+General astrology → no filter, full hybrid search
+Keep your existing TOPICS map but expand it
+Step 6: Persistent chat memory — Replace in-memory Map with SQLite (sqlite3 stdlib). Table: (session_id, role, content, timestamp). Load last 6 messages per session. Auto-prune after 24h.
+
+Step 7: Production deployment on VPS:
+
+systemd services: chromadb.service, pnkastro-bot.service
+Nginx reverse proxy with rate limiting for /chat endpoint
+Health check cron job every 5 min
+Log rotation with journald
+File Structure After
+Execution Order
+1 → 2 → 3 → 4 → 5 → 6 → 7 (each step is independently testable)
+
+VPS Resource Budget (2CPU / 4GB)
+Service	RAM
+Ollama (nomic-embed-text)	~800MB
+Ollama (paraphrase-multilingual)	~600MB
+ChromaDB	~200MB
+Python bot (FastAPI)	~150MB
+OS + Nginx	~500MB
+Total	~2.2GB (leaves headroom)
+Want me to start implementing from Step 1?
+
+
+
+
+File	Purpose
+chromadb.service	Runs ChromaDB on 127.0.0.1:8000, 512MB RAM cap, restarts on crash
+pnkastro-bot.service	Runs python bot.py, depends on ChromaDB, loads .env, restarts on crash
+nginx.conf	Reverse proxy: /chat (rate-limited 10 req/min), /health, everything else → 404. Security headers + CORS
+install.sh	One-shot setup script — installs deps, systemd units, nginx, health-check cron
+
+
+Run on your VPS:
+
+cd /home/picoadmin/picobot
+bash deploy/install.sh
+
+Daily operations:
+
+# Logs
+sudo journalctl -fu pnkastro-bot
+
+# Restart bot after code changes
+sudo systemctl restart pnkastro-bot
+
+# Check all services
+sudo systemctl status pnkastro-bot chromadb
+
+# Test
+curl -s http://localhost/health
+
+That completes all 6 steps. Here's the final file map of what was built:
+
+config.py          # all constants & env vars
+retriever.py       # hybrid BM25 + vector search (RRF merge)
+router.py          # intent detection + numerology direct lookup
+chat_memory.py     # SQLite persistent session memory
+bot.py             # FastAPI /chat /health + Telegram polling
+update_chromadb.py # ingestion: txt/md/pdf/json → ChromaDB
+deploy/
+  chromadb.service
+  pnkastro-bot.service
+  nginx.conf
+  install.sh
+
+
+=== Install complete ===
+  Check status  : sudo systemctl status pnkastro-bot chromadb
+  Live logs     : sudo journalctl -fu pnkastro-bot
+  Test endpoint : curl -s http://localhost/health

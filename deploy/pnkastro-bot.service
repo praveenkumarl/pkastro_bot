@@ -1,0 +1,35 @@
+[Unit]
+Description=PNK Astro Bot (FastAPI + Telegram)
+After=network.target chromadb.service
+# Do NOT use Requires= — that causes cascading stops when chromadb restarts
+
+[Service]
+Type=simple
+User=picoadmin
+WorkingDirectory=/home/picoadmin/picobot
+
+# Load env vars from .env file
+EnvironmentFile=/home/picoadmin/picobot/.env
+
+ExecStart=/home/picoadmin/picobot/.venv/bin/python bot.py
+
+# Restart on any failure
+Restart=always
+RestartSec=10
+KillMode=mixed
+TimeoutStopSec=10
+
+# Wait for Ollama + Chroma to be ready on fresh boot
+ExecStartPre=/bin/sleep 3
+
+# Resource limits
+MemoryMax=512M
+CPUQuota=80%
+
+# Logs
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=pnkastro-bot
+
+[Install]
+WantedBy=multi-user.target

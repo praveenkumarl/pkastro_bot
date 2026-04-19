@@ -40,3 +40,9 @@ This index serves as the primary navigation map for the AI Assistant. It defines
 * **Key Data:** Algorithmic mappings for both the **Chaldean** and **Pythagorean** numerology systems used in name calculations.
 
 ---
+
+## 8. Software / Application Features (PNKAstro)
+* **File:** `./docs/software/software_details.md`
+* **Contents:** Human-readable product overview and feature matrix extracted from the application UI. Includes bilingual (Tamil/English) descriptions of core modules such as Jamakol, Birth Horoscope, KP Lagna Motion Tables, Panchangam, Advanced Panchangam Search, Numerology, Thara/Nakshatra utilities, Planetary Significators, and Digital Tarot decks.
+* **Key Data:** Catalog of user-facing modules, localization & timezone defaults (Chennai / IST), calculation-first design intent, and suggested integration points for RAG ingestion and product pages.
+

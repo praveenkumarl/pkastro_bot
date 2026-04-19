@@ -1,0 +1,30 @@
+[Unit]
+Description=ChromaDB Vector Database
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=picoadmin
+WorkingDirectory=/home/picoadmin/picobot
+
+# Start ChromaDB HTTP server on port 8000
+ExecStart=/home/picoadmin/picobot/.venv/bin/chroma run \
+    --host 127.0.0.1 \
+    --port 8000 \
+    --path /home/picoadmin/picobot/chroma_data
+
+Restart=always
+RestartSec=5
+
+# Resource limits for 4GB RAM VPS
+MemoryMax=512M
+CPUQuota=50%
+
+# Logs
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=chromadb
+
+[Install]
+WantedBy=multi-user.target
