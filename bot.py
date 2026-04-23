@@ -55,8 +55,9 @@ async def call_llm(user_message: str, session_id: str = "default", topic: Option
     if not context_chunks:
         log.warning("No context retrieved")
         return (
-            "I don't have that specific information in my knowledge base. "
-            "Please contact our support directly."
+            "I don't have specific information about that in my knowledge base. "
+            "Please ask me about astrology, numerology, planet karakas, nakshatras, "
+            "or our services. You can also type 'Who are you?' to learn more about me!"
         )
 
     # 3. Build message payload (history loaded from SQLite)
@@ -66,7 +67,7 @@ async def call_llm(user_message: str, session_id: str = "default", topic: Option
         *history,
         {
             "role": "user",
-            "content": f"Context:\n{chr(10).join(context_chunks)}\n\nQuestion: {user_message}",
+            "content": f"[CONTEXT]\n{chr(10).join(f'[{i+1}] {c}' for i, c in enumerate(context_chunks))}\n[/CONTEXT]\n\nQuestion: {user_message}",
         },
     ]
 
@@ -76,7 +77,7 @@ async def call_llm(user_message: str, session_id: str = "default", topic: Option
         async with httpx.AsyncClient(timeout=30) as client:
             resp = await client.post(
                 SARVAM_API_URL,
-                json={"model": SARVAM_MODEL, "messages": messages, "temperature": 0.1},
+                json={"model": SARVAM_MODEL, "messages": messages, "temperature": 0.1, "max_tokens": 250},
                 headers={"Authorization": f"Bearer {SARVAM_API_KEY}"},
             )
             resp.raise_for_status()
@@ -92,9 +93,10 @@ async def call_llm(user_message: str, session_id: str = "default", topic: Option
         return "Sorry, I'm having trouble connecting to the AI brain. Please try again later."
 
     content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
-    # Clean reasoning tags and prefixes
+    # Clean reasoning tags, prefixes, and meta-commentary
     content = re.sub(r"<think>[\s\S]*?</think>", "", content, flags=re.IGNORECASE)
     content = re.sub(r"^(ANSWER:|Response:|Output:)", "", content, flags=re.IGNORECASE).strip()
+    content = re.sub(r"(?i)^(based on (the |my )?context[,:]?|according to (the |my )?context[,:]?|from (the |my )?context[,:]?)\s*", "", content).strip()
 
     # 5. Persist to SQLite
     save_turn(session_id, user_message, content)

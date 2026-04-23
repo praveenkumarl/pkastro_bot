@@ -64,6 +64,13 @@ _GREETING_PATTERNS = re.compile(
     re.IGNORECASE,
 )
 
+# Bot introduction queries
+_BOT_INTRO_PATTERNS = re.compile(
+    r"(who\s+are\s+you|what\s+are\s+you|tell\s+me\s+about\s+yourself|what\s+can\s+you\s+do|"
+    r"what\s+is\s+your\s+purpose|about\s+yourself)",
+    re.IGNORECASE,
+)
+
 _PRICING_KW = {
     "price", "prices", "cost", "costs", "fees", "fee", "charge",
     "payment", "pay", "rate", "rates", "amount", "விலை", "கட்டணம்",
@@ -73,6 +80,23 @@ _COMPANY_KW = {
     "contact", "address", "phone", "email", "whatsapp", "youtube",
     "pnk", "pnkastro", "company", "product", "module", "download",
     "buy", "purchase", "trial",
+    # owner / identity queries
+    "owner", "founder", "who", "owns", "created", "developed", "built",
+    "team", "staff", "support", "website", "pkastro",
+}
+_SOFTWARE_KW = {
+    "software", "app", "application", "feature", "features", "module", "modules",
+    "jamakol prasannam", "panchangam", "hora", "lagna", "horoscope", "natal",
+    "numerology grid", "tarot", "compatibility", "karakam reference",
+    "pkastro", "pnkastro", "download", "demo", "trial", "tool", "tools",
+    "மென்பொருள்", "அம்சங்கள்",
+}
+_BHAVAM_KW = {
+    "bhavam", "bhava", "bhaava", "baava", "house", "houses",
+    "1st house", "2nd house", "3rd house", "4th house", "5th house",
+    "6th house", "7th house", "8th house", "9th house", "10th house",
+    "11th house", "12th house",
+    "லக்னம்", "பாவம்", "பாவகம்", "இல்லம்",
 }
 _NAKSHATRA_KW = {
     "nakshatra", "star", "nakshatram", "asterism",
@@ -102,6 +126,14 @@ _PLANET_KW = {
     "rahu", "ketu", "சூரியன்", "சந்திரன்", "செவ்வாய்", "புதன்",
     "குரு", "சுக்கிரன்", "சனி", "ராகு", "கேது",
     "surya", "chandra", "mangal", "budha", "guru", "shukra", "shani",
+    # karaka (significator) keywords
+    "karaka", "karakam", "காரகம்", "காரகன்",
+    # Tamil family/body karaka terms
+    "தந்தை", "தாய்", "சகோதரன்", "சகோதரி", "மனைவி", "கணவன்",
+    "புத்திரன்", "மகள்",
+    # English equivalents
+    "father", "mother", "brother", "sister", "wife", "husband", "child",
+    "significator", "signification",
 }
 
 
@@ -113,7 +145,7 @@ def _tokens(text: str) -> set:
 
 
 def _detect_intent(query: str) -> str:
-    """Return one of: NUMEROLOGY, PRICING, COMPANY, NAKSHATRA, JAMAKOL, NAADI, PLANETS, GENERAL"""
+    """Return one of: NUMEROLOGY, PRICING, SOFTWARE, COMPANY, BHAVAM, NAKSHATRA, JAMAKOL, NAADI, PLANETS, GENERAL"""
     toks = _tokens(query)
 
     # Numerology: any standalone number mentioned
@@ -122,8 +154,12 @@ def _detect_intent(query: str) -> str:
 
     if toks & _PRICING_KW:
         return "PRICING"
+    if toks & _SOFTWARE_KW:
+        return "SOFTWARE"
     if toks & _COMPANY_KW:
         return "COMPANY"
+    if toks & _BHAVAM_KW:
+        return "BHAVAM"
     if toks & _NAKSHATRA_KW:
         return "NAKSHATRA"
     if toks & _JAMAKOL_KW:
@@ -177,10 +213,12 @@ _INTENT_TO_FOLDER = {
     "NUMEROLOGY": "numerology",
     "PRICING":    "company_detail",
     "COMPANY":    "company_detail",
-    "NAKSHATRA":  "Nakshatram",
-    "JAMAKOL":    "Jamakol",
-    "NAADI":      "Naadi",
-    "PLANETS":    "Planets",
+    "SOFTWARE":   "software",
+    "BHAVAM":     "bhavam",
+    "NAKSHATRA":  "nakshatram",
+    "JAMAKOL":    "jamakol",
+    "NAADI":      "naadi",
+    "PLANETS":    "planets",
     "GENERAL":    None,
 }
 
@@ -207,6 +245,21 @@ def route_query(query: str, explicit_topic: Optional[str] = None) -> Tuple[Optio
     # Caller override takes priority for topic filter
     if explicit_topic:
         return explicit_topic, None
+
+    # Bot introduction queries — no retrieval needed
+    if _BOT_INTRO_PATTERNS.search(query):
+        log.info("Bot intro query detected — returning direct response")
+        return None, (
+            "I am PNK Astro — an automated AI assistant powered by Vedic astrology, "
+            "numerology, and traditional Tamil astrological knowledge. I can help you with:\n"
+            "• Nakshatra (star) analysis\n"
+            "• Numerology readings (numbers 1-108)\n"
+            "• Planet karakas and their significance\n"
+            "• Jamakol (horary astrology)\n"
+            "• Naadi predictions and transit forecasts\n"
+            "• Company services and software information\n\n"
+            "Ask me anything about your birth chart, numerology, or astrology!"
+        )
 
     # Short-circuit greetings — no retrieval needed
     if _GREETING_PATTERNS.match(query.strip()):

@@ -44,14 +44,14 @@ except ImportError:
 # ============================================================================
 
 OLLAMA_BASE_URL = "http://127.0.0.1:11434"
-OLLAMA_MODEL = "nomic-embed-text:latest"       # primary embedding model (fast, 768-dim)
+OLLAMA_MODEL = "paraphrase-multilingual:latest"   # multilingual embedding (Tamil+English)
 CHROMA_HOST = "127.0.0.1"
 CHROMA_PORT = 8000
 COLLECTION_NAME = "langchain"
 
 KB_ROOT = "./docs/"
-CHUNK_SIZE = 512   # large enough to preserve context
-CHUNK_OVERLAP = 64
+CHUNK_SIZE = 200   # paraphrase-multilingual has small context window (~256 tokens)
+CHUNK_OVERLAP = 30
 BATCH_SIZE = 64    # ChromaDB upload batch size
 
 BACKUP_DIR = Path.home() / "picobot" / "chroma_db"
@@ -283,7 +283,7 @@ def load_documents(root_dir=KB_ROOT):
                 raw_docs = _load_numerology_json(file_path)
                 # Numerology entries are already sentence-sized — chunk lightly
                 for doc in raw_docs:
-                    doc.metadata["source_type"] = folder_name
+                    doc.metadata["source_type"] = folder_name.lower()
                 chunks = splitter.split_documents(raw_docs)
                 folder_chunks.extend(chunks)
                 print(f"   📊 {file_path.name}: {len(raw_docs)} entries → {len(chunks)} chunks")
@@ -295,7 +295,7 @@ def load_documents(root_dir=KB_ROOT):
             if raw_docs:
                 chunks = splitter.split_documents(raw_docs)
                 for chunk in chunks:
-                    chunk.metadata["source_type"] = folder_name
+                    chunk.metadata["source_type"] = folder_name.lower()
                 folder_chunks.extend(chunks)
                 print(f"   📄 {file_path.name}: {len(chunks)} chunks")
 

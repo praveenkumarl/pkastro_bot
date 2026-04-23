@@ -115,7 +115,7 @@ def _bm25_search(
     # Pair (score, doc, meta), optionally filter by topic
     candidates = []
     for score, doc, meta in zip(scores, _bm25_corpus, _bm25_metadatas):
-        if topic_folder and meta.get("source_type") != topic_folder:
+        if topic_folder and meta.get("source_type", "").lower() != topic_folder.lower():
             continue
         candidates.append((score, doc, meta))
 
